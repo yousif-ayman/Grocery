@@ -10,7 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
 
-use App\Models\Concerns\Filterable;
+use App\Models\concerns\Filterable;
 class Meal extends Model
 {
     use HasFactory, SoftDeletes, Filterable;
