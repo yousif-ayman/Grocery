@@ -1,6 +1,6 @@
 <?php 
 
-namespace App\Models\Concerns;
+namespace App\Models\concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
