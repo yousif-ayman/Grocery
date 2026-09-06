@@ -15,30 +15,8 @@ class AuthService
         protected NotificationService $notificationService
     ) {}
 
-    public function register(array $data): array
-    {
-        $user = User::create([
-            'username' => $data['username'],
-            'email' => $data['email'] ?? null,
-            'phone' => $data['phone'] ?? null,
-            'password' => $data['password'],
-            'agree_terms' => $data['agree_terms'],
-        ]);
+  
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        if ($user->email) {
-            $this->notificationService->sendWelcomeEmail(
-                $user->email,
-                $user->username
-            );
-        }
-
-        return [
-            'user' => $user,
-            'token' => $token,
-        ];
-    }
 
     public function login(array $data): array
     {
@@ -161,34 +139,7 @@ class AuthService
         );
     }
 
-    public function changePassword(User $user, array $data): void
-    {
-        if (! Hash::check(
-            $data['current_password'],
-            $user->password
-        )) {
-            throw ValidationException::withMessages([
-                'current_password' => [
-                    'The current password is incorrect.',
-                ],
-            ]);
-        }
-
-        if (Hash::check(
-            $data['password'],
-            $user->password
-        )) {
-            throw ValidationException::withMessages([
-                'password' => [
-                    'The new password must be different from the current password.',
-                ],
-            ]);
-        }
-
-        $user->update([
-            'password' => $data['password'],
-        ]);
-    }
+    
 
     public function deleteAccount(User $user): void
     {

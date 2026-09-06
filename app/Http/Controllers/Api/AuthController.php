@@ -15,7 +15,9 @@ use App\Services\AuthService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Actions\Auth\RegisterUserAction;
 
+use App\Actions\Auth\ChangePasswordAction;
 class AuthController extends Controller
 {
     use ApiResponse;
@@ -24,21 +26,23 @@ class AuthController extends Controller
         protected AuthService $authService
     ) {}
 
-    public function register(RegisterRequest $request): JsonResponse
-    {
-        $result = $this->authService->register(
-            $request->validated()
-        );
+   public function register(
+    RegisterRequest $request,
+    RegisterUserAction $action
+): JsonResponse {
+    $result = $action->execute(
+        $request->validated()
+    );
 
-        return $this->successResponse(
-            'Registration successful',
-            [
-                'user' => new UserResource($result['user']),
-                'token' => $result['token'],
-            ],
-            201
-        );
-    }
+    return $this->successResponse(
+        'Registration successful',
+        [
+            'user' => new UserResource($result['user']),
+            'token' => $result['token'],
+        ],
+        201
+    );
+}
 
     public function login(LoginRequest $request): JsonResponse
     {
@@ -100,15 +104,7 @@ class AuthController extends Controller
         );
     }
 
-    public function me(Request $request): JsonResponse
-    {
-        return $this->successResponse(
-            'User retrieved successfully',
-            [
-                'user' => new UserResource($request->user()),
-            ]
-        );
-    }
+    
 
     public function deleteAccount(
         DeleteAccountRequest $request
@@ -121,17 +117,18 @@ class AuthController extends Controller
             'Account deleted successfully.'
         );
     }
+public function changePassword(
+    ChangePasswordRequest $request,
+    ChangePasswordAction $action
+): JsonResponse {
+    $action->execute(
+        $request->user(),
+        $request->validated()
+    );
 
-    public function changePassword(
-        ChangePasswordRequest $request
-    ): JsonResponse {
-        $this->authService->changePassword(
-            $request->user(),
-            $request->validated()
-        );
-
-        return $this->successResponse(
-            'Password changed successfully.'
-        );
-    }
+    return $this->successResponse(
+        'Password changed successfully.'
+    );
+}
+   
 }
