@@ -22,8 +22,7 @@ class ReviewController extends Controller
     {
         $reviews = $this->reviewService->getReviews($request);
 
-        return response()->json([
-            'success' => true,
+        return $this->successResponse([
             'data' => ReviewResource::collection($reviews),
             'meta' => [
                 'current_page' => $reviews->currentPage(), 'last_page' => $reviews->lastPage(),
@@ -35,21 +34,22 @@ class ReviewController extends Controller
     public function store(StoreReviewRequest $request): JsonResponse
     {
         if ($this->reviewService->hasUserReviewed(Auth::id(), $request->meal_id)) {
-            return response()->json(['success' => false, 'message' => 'You have already reviewed this meal'], 400);
+            return $this->errorResponse('You have already reviewed this meal');
         }
 
         $review = $this->reviewService->createReview($request->validated());
 
-        return response()->json([
-            'success' => true, 'message' => 'Review submitted successfully. Waiting for admin approval.',
-            'data' => new ReviewResource($review->load(['user', 'meal']))
-        ], 201);
+        return $this->successResponse(
+            new ReviewResource($review->load(['user', 'meal'])),
+            'Review submitted successfully. Waiting for admin approval.',
+            201
+        );
     }
 
     public function show($id): JsonResponse
     {
         $review = $this->reviewService->getReviewById($id);
-        return response()->json(['success' => true, 'data' => new ReviewResource($review)]);
+        return $this->successResponse(new ReviewResource($review));
     }
 
     public function update(UpdateReviewRequest $request, $id): JsonResponse
@@ -57,15 +57,15 @@ class ReviewController extends Controller
         $review = Review::findOrFail($id);
 
         if (!$this->reviewService->canUserEditReview($review, Auth::id()) && !Auth::user()->is_admin) {
-            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+            return $this->errorResponse('Unauthorized', 403);
         }
 
         $review = $this->reviewService->updateReview($review, $request->validated());
 
-        return response()->json([
-            'success' => true, 'message' => 'Review updated successfully',
-            'data' => new ReviewResource($review->load(['user', 'meal']))
-        ]);
+        return $this->successResponse(
+            new ReviewResource($review->load(['user', 'meal'])),
+            'Review updated successfully'
+        );
     }
 
     public function destroy($id): JsonResponse
@@ -73,19 +73,18 @@ class ReviewController extends Controller
         $review = Review::findOrFail($id);
 
         if (!$this->reviewService->canUserEditReview($review, Auth::id()) && !Auth::user()->is_admin) {
-            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+            return $this->errorResponse('Unauthorized', 403);
         }
 
         $this->reviewService->deleteReview($review);
-        return response()->json(['success' => true, 'message' => 'Review deleted successfully']);
+        return $this->successResponse(null, 'Review deleted successfully');
     }
 
     public function getMealReviews($mealId, Request $request): JsonResponse
     {
         $result = $this->reviewService->getMealReviews($mealId, $request);
 
-        return response()->json([
-            'success' => true,
+        return $this->successResponse([
             'meal' => $result['meal'],
             'data' => ReviewResource::collection($result['reviews']),
             'meta' => [
@@ -99,8 +98,7 @@ class ReviewController extends Controller
     {
         $reviews = $this->reviewService->getUserReviews($request);
 
-        return response()->json([
-            'success' => true,
+        return $this->successResponse([
             'data' => ReviewResource::collection($reviews),
             'meta' => [
                 'current_page' => $reviews->currentPage(), 'last_page' => $reviews->lastPage(),
@@ -111,9 +109,6 @@ class ReviewController extends Controller
 
     public function getMealReviewStats($mealId): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data' => $this->reviewService->getMealReviewStats($mealId),
-        ]);
+        return $this->successResponse($this->reviewService->getMealReviewStats($mealId));
     }
 }

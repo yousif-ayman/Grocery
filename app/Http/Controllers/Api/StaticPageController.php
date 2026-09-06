@@ -36,10 +36,7 @@ class StaticPageController extends Controller
 
         $page = $this->staticPageService->createPage($validated);
 
-        return response()->json([
-            'success' => true, 'message' => 'Page created successfully',
-            'data' => new StaticPageResource($page)
-        ], 201);
+        return $this->successResponse(new StaticPageResource($page), 'Page created successfully', 201);
     }
 
     public function showBySlug($slug): JsonResponse
@@ -47,10 +44,10 @@ class StaticPageController extends Controller
         $page = $this->staticPageService->getPageBySlug($slug);
 
         if (!$this->staticPageService->isPageAccessible($page, request()->user())) {
-            return response()->json(['success' => false, 'message' => 'Page not found'], 404);
+            return $this->errorResponse('Page not found', 404);
         }
 
-        return new StaticPageResource($page);
+        return $this->successResponse(new StaticPageResource($page));
     }
 
     public function show(StaticPage $staticPage)
@@ -73,23 +70,17 @@ class StaticPageController extends Controller
 
         $staticPage = $this->staticPageService->updatePage($staticPage, $validated);
 
-        return response()->json([
-            'success' => true, 'message' => 'Page updated successfully',
-            'data' => new StaticPageResource($staticPage)
-        ]);
+        return $this->successResponse(new StaticPageResource($staticPage), 'Page updated successfully');
     }
 
     public function destroy(StaticPage $staticPage): JsonResponse
     {
         $this->staticPageService->deletePage($staticPage);
-        return response()->json(['success' => true, 'message' => 'Page deleted successfully']);
+        return $this->successResponse(null, 'Page deleted successfully');
     }
 
     public function importantPages(): JsonResponse
     {
-        return response()->json([
-            'success' => true, 'message' => 'Important pages retrieved successfully',
-            'data' => $this->staticPageService->getImportantPages()
-        ]);
+        return $this->successResponse($this->staticPageService->getImportantPages(), 'Important pages retrieved successfully');
     }
 }

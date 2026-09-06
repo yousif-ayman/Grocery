@@ -3,15 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
-use App\Rules\UsernameMustContainLetter;
+use App\Http\Requests\UpdateImageRequest;
+use App\Http\Requests\UpdateProfileRequest;
+use App\Http\Resources\AddressResource;
+use App\Http\Resources\OrderDetailResource;
+use App\Http\Resources\OrderResource;
+use App\Http\Resources\ProfileResource;
 use App\Services\ProfileService;
-use App\Support\EgyptianPhoneRules;
-use App\Support\EmailValidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
@@ -21,82 +21,56 @@ class ProfileController extends Controller
 
     public function show(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'message' => 'Profile retrieved successfully',
-            'data' => $this->profileService->getProfileData($request->user()),
-        ]);
+        $user = $request->user();
+        $data = $this->profileService->getProfileData($user);
+
+        return $this->successResponse([
+            'me' => new ProfileResource($user),
+            'addresses' => AddressResource::collection($data['addresses']),
+            'order_history' => [
+                'orders' => OrderResource::collection($data['orderHistory']),
+                'ordered_at' => $data['orderHistory']->map(fn ($o) => $o['placed_at'] ?? $o['created_at'])->values(),
+            ],
+            'in_progress_orders' => OrderDetailResource::collection($data['inProgressOrders']),
+            'order_notifications' => $data['orderNotifications'],
+            'settings' => $data['settings'],
+            'wishlist' => $data['wishlist'],
+        ], 'Profile retrieved successfully');
     }
 
     public function orderHistory(Request $request): JsonResponse
     {
         $perPage = min(max((int) $request->get('per_page', 15), 1), 50);
+        $orders = $this->profileService->getOrderHistory($request->user(), $perPage);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Order history retrieved successfully',
-            'data' => $this->profileService->getOrderHistory($request->user(), $perPage),
-        ]);
+        return $this->successResponse(OrderResource::collection($orders), 'Order history retrieved successfully');
     }
 
-    public function updateImage(Request $request): JsonResponse
+    public function updateImage(UpdateImageRequest $request): JsonResponse
     {
-        $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
-        ]);
-
         $user = $this->profileService->updateProfileImage($request->user(), $request->file('image'));
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Profile image updated successfully',
-            'data' => [
-                'profile_image' => $user->profile_image,
-                'profile_image_url' => $user->profile_image_url,
-            ],
-        ]);
+        return $this->successResponse([
+            'profile_image' => $user->profile_image,
+            'profile_image_url' => $user->profile_image_url,
+        ], 'Profile image updated successfully');
     }
 
-    public function updateInfo(Request $request): JsonResponse
+    public function updateInfo(UpdateProfileRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->profileService->updateProfileInfo($request->user(), $request->validated());
 
-        if ($request->has('phone') && is_string($request->input('phone'))) {
-            $request->merge(['phone' => preg_replace('/\s+/', '', $request->input('phone'))]);
+        if (!$user) {
+            return $this->errorResponse('No data provided to update');
         }
 
-        $validated = $request->validate([
-            'username' => ['sometimes', 'string', 'max:'.User::USERNAME_MAX_LENGTH, Rule::unique('users')->ignore($user->id), 'not_regex:/\s/u', 'alpha_dash', new UsernameMustContainLetter],
-            'firstname' => ['sometimes', 'string', 'max:255'],
-            'lastname' => ['sometimes', 'string', 'max:255'],
-            'gender' => ['sometimes', 'nullable', 'string', 'max:20', Rule::in(['male', 'female', 'other', 'prefer_not_to_say'])],
-            'birthday' => ['sometimes', 'nullable', 'date', 'before:today'],
-            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'phone' => ['sometimes', 'string', EgyptianPhoneRules::internationalPrefixRule(), 'min:11', 'max:13', EgyptianPhoneRules::mobileRule(), Rule::unique('users')->ignore($user->id)],
-            'country_code' => ['sometimes', 'string', 'max:5', 'regex:/^\+\d{1,4}$/'],
-            'preferred_languages' => ['sometimes', 'array'],
-            'preferred_languages.*' => ['string', 'max:10'],
-        ]);
-
-        $user = $this->profileService->updateProfileInfo($user, $validated);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Profile updated successfully',
-            'data' => [
-                'id' => $user->id, 'username' => $user->username, 'firstname' => $user->firstname,
-                'lastname' => $user->lastname, 'full_name' => $user->full_name, 'gender' => $user->gender,
-                'birthday' => $user->birthday?->format('Y-m-d'), 'email' => $user->email, 'phone' => $user->phone,
-                'country_code' => $user->country_code, 'preferred_languages' => $user->preferred_languages ?? [],
-                'profile_image_url' => $user->profile_image_url, 'updated_at' => $user->updated_at,
-            ],
-        ]);
+        return $this->successResponse(new ProfileResource($user), 'Profile updated successfully');
     }
 
     public function deleteImage(Request $request): JsonResponse
     {
         $this->profileService->deleteProfileImage($request->user());
-        return response()->json(['success' => true, 'message' => 'Profile image deleted successfully']);
+        return $this->successResponse(null, 'Profile image deleted successfully');
     }
 
     public function sessions(Request $request): JsonResponse
@@ -109,7 +83,7 @@ class ProfileController extends Controller
             'created_at' => $token->created_at?->toIso8601String(),
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Sessions retrieved successfully', 'data' => $tokens]);
+        return $this->successResponse($tokens, 'Sessions retrieved successfully');
     }
 
     public function destroySession(Request $request, string $tokenId): JsonResponse
@@ -118,15 +92,15 @@ class ProfileController extends Controller
         $currentTokenId = $user->currentAccessToken()?->id;
 
         if ((string) $tokenId === (string) $currentTokenId) {
-            return response()->json(['success' => false, 'message' => 'Cannot revoke your current session. Use logout instead.'], 400);
+            return $this->errorResponse('Cannot revoke your current session. Use logout instead.');
         }
 
         $token = $user->tokens()->find($tokenId);
-        if (! $token) {
-            return response()->json(['success' => false, 'message' => 'Session not found'], 404);
+        if (!$token) {
+            return $this->errorResponse('Session not found', 404);
         }
 
         $token->delete();
-        return response()->json(['success' => true, 'message' => 'Session revoked successfully']);
+        return $this->successResponse(null, 'Session revoked successfully');
     }
 }

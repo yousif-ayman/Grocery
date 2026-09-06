@@ -17,10 +17,8 @@ class SmartListController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true, 'message' => 'Smart lists retrieved successfully',
-            'data' => SmartListResource::collection($this->smartListService->getUserSmartLists($request->user()->id)),
-        ]);
+        $smartLists = $this->smartListService->getUserSmartLists($request->user()->id);
+        return $this->successResponse(SmartListResource::collection($smartLists), 'Smart lists retrieved successfully');
     }
 
     public function store(SmartListRequest $request): JsonResponse
@@ -31,20 +29,13 @@ class SmartListController extends Controller
             $request->file('image')
         );
 
-        return response()->json([
-            'success' => true, 'message' => 'Smart list created successfully',
-            'data' => new SmartListResource($smartList),
-        ]);
+        return $this->successResponse(new SmartListResource($smartList), 'Smart list created successfully', 201);
     }
 
     public function show(Request $request, $id): JsonResponse
     {
         $smartList = $this->smartListService->getSmartListById($request->user()->id, $id);
-
-        return response()->json([
-            'success' => true, 'message' => 'Smart list retrieved successfully',
-            'data' => new SmartListResource($smartList),
-        ]);
+        return $this->successResponse(new SmartListResource($smartList), 'Smart list retrieved successfully');
     }
 
     public function update(SmartListRequest $request, $id): JsonResponse
@@ -52,10 +43,7 @@ class SmartListController extends Controller
         $smartList = $this->smartListService->getSmartListById($request->user()->id, $id);
         $smartList = $this->smartListService->updateSmartList($smartList, $request->validated(), $request->file('image'));
 
-        return response()->json([
-            'success' => true, 'message' => 'Smart list updated successfully',
-            'data' => new SmartListResource($smartList),
-        ]);
+        return $this->successResponse(new SmartListResource($smartList), 'Smart list updated successfully');
     }
 
     public function destroy(Request $request, $id): JsonResponse
@@ -63,7 +51,7 @@ class SmartListController extends Controller
         $smartList = $this->smartListService->getSmartListById($request->user()->id, $id);
         $this->smartListService->deleteSmartList($smartList);
 
-        return response()->json(['success' => true, 'message' => 'Smart list deleted successfully']);
+        return $this->successResponse(null, 'Smart list deleted successfully');
     }
 
     public function addMeal(Request $request, string $id): JsonResponse
@@ -72,10 +60,7 @@ class SmartListController extends Controller
         $smartList = $this->smartListService->getSmartListById($request->user()->id, $id);
         $smartList = $this->smartListService->addMealToList($smartList, $request->meal_id);
 
-        return response()->json([
-            'success' => true, 'message' => 'Item added to smart list successfully',
-            'data' => new SmartListResource($smartList),
-        ]);
+        return $this->successResponse(new SmartListResource($smartList), 'Item added to smart list successfully');
     }
 
     public function removeMeal(Request $request, string $id, string $mealId): JsonResponse
@@ -83,9 +68,6 @@ class SmartListController extends Controller
         $smartList = $this->smartListService->getSmartListById($request->user()->id, $id);
         $smartList = $this->smartListService->removeMealFromList($smartList, $mealId);
 
-        return response()->json([
-            'success' => true, 'message' => 'Item removed from smart list successfully',
-            'data' => new SmartListResource($smartList),
-        ]);
+        return $this->successResponse(new SmartListResource($smartList), 'Item removed from smart list successfully');
     }
 }

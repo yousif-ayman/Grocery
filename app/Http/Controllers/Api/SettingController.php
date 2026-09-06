@@ -16,10 +16,9 @@ class SettingController extends Controller
 
     public function index(): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data' => new SettingResource($this->settingService->getSettings())
-        ]);
+        return $this->successResponse(
+            new SettingResource($this->settingService->getSettings())
+        );
     }
 
     public function update(SettingRequest $request): JsonResponse
@@ -30,17 +29,14 @@ class SettingController extends Controller
             $request->file('favicon')
         );
 
-        return response()->json([
-            'success' => true, 'message' => 'Settings updated successfully',
-            'data' => new SettingResource($settings)
-        ]);
+        return $this->successResponse(
+            new SettingResource($settings),
+            'Settings updated successfully'
+        );
     }
 
     public function publicSettings(): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data' => $this->settingService->getPublicSettings()
-        ]);
+        return $this->successResponse($this->settingService->getPublicSettings());
     }
 }
