@@ -5,37 +5,30 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SettingRequest;
 use App\Http\Resources\SettingResource;
-use App\Models\Setting;
+use App\Services\SettingService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
 
 class SettingController extends Controller
 {
+    public function __construct(
+        private SettingService $settingService
+    ) {}
+
     public function index(): JsonResponse
     {
-        return response()->json(['success' => true, 'data' => new SettingResource(Setting::getSettings())]);
+        return response()->json([
+            'success' => true,
+            'data' => new SettingResource($this->settingService->getSettings())
+        ]);
     }
 
     public function update(SettingRequest $request): JsonResponse
     {
-        $settings = Setting::getSettings();
-        $data = $request->validated();
-
-        if ($request->hasFile('logo')) {
-            if ($settings->logo && Storage::disk('public')->exists($settings->logo)) {
-                Storage::disk('public')->delete($settings->logo);
-            }
-            $data['logo'] = $request->file('logo')->store('settings', 'public');
-        }
-
-        if ($request->hasFile('favicon')) {
-            if ($settings->favicon && Storage::disk('public')->exists($settings->favicon)) {
-                Storage::disk('public')->delete($settings->favicon);
-            }
-            $data['favicon'] = $request->file('favicon')->store('settings', 'public');
-        }
-
-        $settings->update($data);
+        $settings = $this->settingService->updateSettings(
+            $request->validated(),
+            $request->file('logo'),
+            $request->file('favicon')
+        );
 
         return response()->json([
             'success' => true, 'message' => 'Settings updated successfully',
@@ -45,15 +38,9 @@ class SettingController extends Controller
 
     public function publicSettings(): JsonResponse
     {
-        $s = Setting::getSettings();
         return response()->json([
             'success' => true,
-            'data' => [
-                'site_name' => $s->site_name, 'site_description' => $s->site_description,
-                'social_media' => ['facebook' => $s->facebook, 'linkedin' => $s->linkedin, 'instagram' => $s->instagram, 'twitter' => $s->twitter],
-                'contact' => ['email' => $s->email, 'phone' => $s->phone, 'address' => $s->address],
-                'logo' => $s->logo, 'copyright' => $s->copyright_text,
-            ]
+            'data' => $this->settingService->getPublicSettings()
         ]);
     }
 }

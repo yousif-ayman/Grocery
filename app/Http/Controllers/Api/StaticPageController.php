@@ -3,30 +3,22 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\StaticPageResource;
 use App\Http\Resources\StaticPageCollection;
+use App\Http\Resources\StaticPageResource;
 use App\Models\StaticPage;
+use App\Services\StaticPageService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class StaticPageController extends Controller
 {
+    public function __construct(
+        private StaticPageService $staticPageService
+    ) {}
+
     public function index(Request $request)
     {
-        $query = StaticPage::query();
-
-        if (!$request->user() || !$request->user()->is_admin) {
-            $query->published();
-        }
-
-        if ($request->has('published')) $query->where('is_published', $request->boolean('published'));
-
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(fn($q) => $q->where('title', 'LIKE', "%{$search}%")->orWhere('content', 'LIKE', "%{$search}%"));
-        }
-
-        $perPage = min(max((int) $request->get('per_page', 15), 1), 50);
-        return new StaticPageCollection($query->ordered()->paginate($perPage));
+        return new StaticPageCollection($this->staticPageService->getPages($request));
     }
 
     public function store(Request $request)
@@ -42,17 +34,19 @@ class StaticPageController extends Controller
             'order' => 'nullable|integer'
         ]);
 
+        $page = $this->staticPageService->createPage($validated);
+
         return response()->json([
             'success' => true, 'message' => 'Page created successfully',
-            'data' => new StaticPageResource(StaticPage::create($validated))
+            'data' => new StaticPageResource($page)
         ], 201);
     }
 
-    public function showBySlug($slug)
+    public function showBySlug($slug): JsonResponse
     {
-        $page = StaticPage::bySlug($slug)->first();
+        $page = $this->staticPageService->getPageBySlug($slug);
 
-        if (!$page || (!$page->is_published && (!request()->user() || !request()->user()->is_admin))) {
+        if (!$this->staticPageService->isPageAccessible($page, request()->user())) {
             return response()->json(['success' => false, 'message' => 'Page not found'], 404);
         }
 
@@ -77,7 +71,7 @@ class StaticPageController extends Controller
             'order' => 'nullable|integer'
         ]);
 
-        $staticPage->update($validated);
+        $staticPage = $this->staticPageService->updatePage($staticPage, $validated);
 
         return response()->json([
             'success' => true, 'message' => 'Page updated successfully',
@@ -85,18 +79,17 @@ class StaticPageController extends Controller
         ]);
     }
 
-    public function destroy(StaticPage $staticPage)
+    public function destroy(StaticPage $staticPage): JsonResponse
     {
-        $staticPage->delete();
+        $this->staticPageService->deletePage($staticPage);
         return response()->json(['success' => true, 'message' => 'Page deleted successfully']);
     }
 
-    public function importantPages()
+    public function importantPages(): JsonResponse
     {
-        $pages = StaticPage::published()
-            ->whereIn('slug', ['terms-and-conditions', 'policies', 'about-us', 'contact-us'])
-            ->ordered()->get(['slug', 'title']);
-
-        return response()->json(['success' => true, 'message' => 'Important pages retrieved successfully', 'data' => $pages]);
+        return response()->json([
+            'success' => true, 'message' => 'Important pages retrieved successfully',
+            'data' => $this->staticPageService->getImportantPages()
+        ]);
     }
 }
