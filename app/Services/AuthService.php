@@ -157,16 +157,5 @@ class AuthService
         return true;
     }
 
-    /**
-     * Delete user account
-     */
-    public function deleteAccount(User $user): bool
-    {
-        $user->delete();
 
-        // Revoke all tokens for the user
-        $user->tokens()->delete();
-
-        return true;
-    }
 }
