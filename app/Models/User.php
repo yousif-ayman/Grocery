@@ -316,4 +316,9 @@ class User extends Authenticatable implements HasName
     {
         return $this->hasMany(Order::class);
     }
+
+    public function supportReports(): HasMany
+    {
+        return $this->hasMany(SupportReport::class);
+    }
 }

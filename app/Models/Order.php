@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
+use App\Enums\PaymentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,6 +46,8 @@ class Order extends Model
         'discount' => 'decimal:2',
         'shipping_fee' => 'decimal:2',
         'total' => 'decimal:2',
+        'status' => OrderStatus::class,
+        'payment_status' => PaymentStatus::class,
         'placed_at' => 'datetime',
         'processing_at' => 'datetime',
         'shipping_at' => 'datetime',

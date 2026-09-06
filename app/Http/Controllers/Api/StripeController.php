@@ -3,81 +3,166 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\ChargeSavedCardRequest;
+use App\Services\Payment\SavedCardPaymentService;
+use DomainException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Stripe\Stripe;
-use Stripe\Customer;
-use Stripe\SetupIntent;
-use Stripe\PaymentMethod;
-use Stripe\PaymentIntent;
+use Illuminate\Http\Response;
+use Stripe\Exception\ApiErrorException;
+use Throwable;
 
 class StripeController extends Controller
 {
-    public function createSetupIntent(Request $request)
-    {
-        Stripe::setApiKey(config('services.stripe.secret'));
-        $user = $request->user();
+    public function __construct(
+        private readonly SavedCardPaymentService $paymentService
+    ) {}
 
-        if (!$user->stripe_customer_id) {
-            $customer = Customer::create([
-                'email' => $user->email,
-                'name' => $user->name,
-            ]);
-            $user->update(['stripe_customer_id' => $customer->id]);
+    public function createSetupIntent(
+        Request $request
+    ): JsonResponse {
+        try {
+            $data = $this->paymentService
+                ->createSetupIntent(
+                    $request->user()
+                );
+
+            return $this->successResponse(
+                $data,
+                'Setup intent created.'
+            );
+        } catch (ApiErrorException $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to initialize card setup.',
+                Response::HTTP_BAD_GATEWAY
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to initialize card setup.',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    public function listCards(
+        Request $request
+    ): JsonResponse {
+        try {
+            $cards = $this->paymentService
+                ->listCards(
+                    $request->user()
+                );
+
+            return $this->successResponse(
+                $cards,
+                'Cards retrieved successfully.'
+            );
+        } catch (ApiErrorException $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to retrieve cards.',
+                Response::HTTP_BAD_GATEWAY
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to retrieve cards.',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    public function chargeSavedCard(
+        ChargeSavedCardRequest $request
+    ): JsonResponse {
+        $validated = $request->validated();
+
+        $order = $request
+            ->user()
+            ->orders()
+            ->find($validated['order_id']);
+
+        if (!$order) {
+            return $this->errorResponse(
+                'Order not found.',
+                Response::HTTP_NOT_FOUND
+            );
         }
 
-        $intent = SetupIntent::create([
-            'customer' => $user->stripe_customer_id,
-            'payment_method_types' => ['card'],
-        ]);
+        try {
+            $payment = $this->paymentService
+                ->chargeSavedCard(
+                    $request->user(),
+                    $order,
+                    $validated['payment_method_id']
+                );
 
-        return response()->json(['clientSecret' => $intent->client_secret]);
+            return $this->successResponse(
+                $payment,
+                'Payment processed successfully.'
+            );
+        } catch (DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        } catch (ApiErrorException $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Payment could not be processed.',
+                Response::HTTP_BAD_GATEWAY
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Payment could not be processed.',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
     }
 
-    public function listCards(Request $request)
-    {
-        Stripe::setApiKey(config('services.stripe.secret'));
-        $user = $request->user();
+    public function deleteCard(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        try {
+            $this->paymentService
+                ->deleteCard(
+                    $request->user(),
+                    $id
+                );
 
-        if (!$user->stripe_customer_id) return response()->json([]);
+            return $this->successResponse(
+                null,
+                'Card deleted successfully.'
+            );
+        } catch (DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                Response::HTTP_FORBIDDEN
+            );
+        } catch (ApiErrorException $e) {
+            report($e);
 
-        $cards = PaymentMethod::all([
-            'customer' => $user->stripe_customer_id,
-            'type' => 'card',
-        ]);
+            return $this->errorResponse(
+                'Unable to delete card.',
+                Response::HTTP_BAD_GATEWAY
+            );
+        } catch (Throwable $e) {
+            report($e);
 
-        return response()->json($cards->data);
-    }
-
-
-    public function chargeSavedCard(Request $request)
-    {
-        $request->validate([
-            'payment_method_id' => 'required|string',
-            'amount' => 'required|numeric',
-        ]);
-
-        Stripe::setApiKey(config('services.stripe.secret'));
-        $user = $request->user();
-
-        $paymentIntent = PaymentIntent::create([
-            'amount' => $request->amount * 100,
-            'currency' => 'usd',
-            'customer' => $user->stripe_customer_id,
-            'payment_method' => $request->payment_method_id,
-            'off_session' => true,
-            'confirm' => true,
-        ]);
-
-        return response()->json(['status' => 'success', 'payment_intent' => $paymentIntent]);
-    }
-
-    public function deleteCard(Request $request, $id)
-    {
-        Stripe::setApiKey(config('services.stripe.secret'));
-
-        $paymentMethod = PaymentMethod::retrieve($id);
-        $paymentMethod->detach();
-
-        return response()->json(['status' => 'deleted']);
+            return $this->errorResponse(
+                'Unable to delete card.',
+                Response::HTTP_INTERNAL_SERVER_ERROR
+            );
+        }
     }
 }
