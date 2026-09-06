@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class CreateStripeCheckoutSessionRequest extends FormRequest
+class ChargeSavedCardRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -19,10 +19,11 @@ class CreateStripeCheckoutSessionRequest extends FormRequest
                 'integer',
                 'exists:orders,id',
             ],
-            'amount' => [
+
+            'payment_method_id' => [
                 'required',
-                'numeric',
-                'min:0.01'
+                'string',
+                'max:255',
             ],
         ];
     }

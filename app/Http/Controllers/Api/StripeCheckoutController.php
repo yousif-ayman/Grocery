@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateStripeCheckoutSessionRequest;
 use App\Models\Order;
 use App\Services\StripeCheckoutService;
+use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Stripe\Checkout\Session;
-use Stripe\Stripe;
+use Illuminate\Http\Response;
+use Stripe\Exception\ApiErrorException;
 use Throwable;
 
 class StripeCheckoutController extends Controller
@@ -19,113 +20,112 @@ class StripeCheckoutController extends Controller
         private readonly StripeCheckoutService $checkoutService
     ) {}
 
-    public function verifySession(Request $request, string $sessionId): JsonResponse
-    {
+    public function store(
+        CreateStripeCheckoutSessionRequest $request
+    ): JsonResponse {
         $user = $request->user();
 
+        $order = Order::query()
+            ->find($request->validated('order_id'));
+
+        if (! $order) {
+            return $this->errorResponse(
+                'Order not found.',
+                Response::HTTP_NOT_FOUND
+            );
+        }
+
+        $this->authorize('pay', $order);
+
         try {
-            Stripe::setApiKey(config('services.stripe.secret'));
-            $session = Session::retrieve($sessionId);
+            $session = $this->checkoutService
+                ->createSessionForOrder(
+                    $order,
+                    $user
+                );
+
+            return $this->successResponse(
+                [
+                    'checkout_url' => $session->url,
+                    'session_id' => $session->id,
+                    'order_id' => $order->id,
+                ],
+                'Checkout session created.'
+            );
+        } catch (DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                Response::HTTP_UNPROCESSABLE_ENTITY
+            );
+        } catch (ApiErrorException $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to start payment. Please try again.',
+                Response::HTTP_BAD_GATEWAY
+            );
         } catch (Throwable $e) {
             report($e);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Unable to verify payment session.',
-            ], 502);
+            return $this->errorResponse(
+                'Unable to start checkout. Please try again.',
+                Response::HTTP_BAD_GATEWAY
+            );
         }
-
-        if ($session->payment_status !== 'paid') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment has not been completed.',
-                'data' => ['payment_status' => $session->payment_status],
-            ], 402);
-        }
-
-        $orderId = $session->metadata->order_id ?? $session->client_reference_id ?? null;
-        $order = $orderId
-            ? Order::query()->whereKey((int) $orderId)->where('user_id', $user->id)->first()
-            : null;
-
-        if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Order not found.',
-            ], 404);
-        }
-
-        if ($order->status === 'awaiting_payment') {
-            $pi = $session->payment_intent;
-            $paymentIntentId = is_string($pi) ? $pi : ($pi->id ?? null);
-
-            DB::transaction(function () use ($order, $paymentIntentId, $session) {
-                $order->refresh();
-                if ($order->status !== 'awaiting_payment') {
-                    return;
-                }
-
-                $order->update([
-                    'status' => 'placed',
-                    'placed_at' => now(),
-                    'stripe_payment_intent_id' => $paymentIntentId,
-                    'stripe_checkout_session_id' => $session->id,
-                ]);
-            });
-
-            $order->refresh();
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Payment verified. Order is placed.',
-            'data' => [
-                'order_id' => $order->id,
-                'order_number' => $order->order_number,
-                'status' => $order->status,
-            ],
-        ]);
     }
 
-    public function store(CreateStripeCheckoutSessionRequest $request): JsonResponse
-    {
+    public function verifySession(
+        Request $request,
+        string $sessionId
+    ): JsonResponse {
         $user = $request->user();
-        $data = $request->validated();
 
-        $order = Order::query()->whereKey($data['order_id'])->where('user_id', $user->id)->first();
+        $order = Order::query()
+            ->where('user_id', $user->id)
+            ->where('stripe_checkout_session_id', $sessionId)
+            ->first();
+
         if (! $order) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Order not found.',
-            ], 404);
+            return $this->errorResponse(
+                'Payment session not found.',
+                Response::HTTP_NOT_FOUND
+            );
         }
 
         try {
-            $session = $this->checkoutService->createSessionForOrder($order, $user, (float) $data['amount']);
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
-        } catch (\Throwable $e) {
+            $order = $this->checkoutService
+                ->verifySession(
+                    $sessionId,
+                    $order
+                );
+
+            return $this->successResponse(
+                [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'status' => $order->status->value,
+                ],
+                'Payment verified. Order is placed.'
+            );
+        } catch (DomainException $e) {
+            return $this->errorResponse(
+                $e->getMessage(),
+                Response::HTTP_PAYMENT_REQUIRED
+            );
+        } catch (ApiErrorException $e) {
             report($e);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Unable to start checkout. Please try again.',
-            ], 502);
+            return $this->errorResponse(
+                'Unable to verify payment session.',
+                Response::HTTP_BAD_GATEWAY
+            );
+        } catch (Throwable $e) {
+            report($e);
+
+            return $this->errorResponse(
+                'Unable to verify payment session.',
+                Response::HTTP_BAD_GATEWAY
+            );
         }
-
-        $order->update(['stripe_checkout_session_id' => $session->id]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Checkout session created. Open checkout_url in your WebView.',
-            'data' => [
-                'checkout_url' => $session->url,
-                'session_id' => $session->id,
-                'order_id' => $order->id,
-            ],
-        ]);
     }
 }
