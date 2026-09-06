@@ -88,50 +88,7 @@ class UserAppSettingsService
         return $this->getNotificationPreferences($user->fresh());
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    public function buildDataExport(User $user): array
-    {
-        $user->load([
-            'addresses',
-            'orders' => fn ($query) => $query->latest()->limit(50),
-            'notificationSettings',
-        ]);
-
-        return [
-            'exported_at' => now()->toIso8601String(),
-            'profile' => [
-                'id' => $user->id,
-                'username' => $user->username,
-                'firstname' => $user->firstname,
-                'lastname' => $user->lastname,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'app_language' => $user->app_language,
-                'app_theme' => $user->app_theme,
-                'loyalty_points' => $user->loyalty_points,
-                'store_credits' => $user->store_credits,
-                'created_at' => $user->created_at?->toIso8601String(),
-            ],
-            'addresses' => $user->addresses->map(fn ($address) => [
-                'label' => $address->label,
-                'full_name' => $address->full_name,
-                'phone' => $address->phone,
-                'street_address' => $address->street_address,
-                'city' => $address->city,
-                'country' => $address->country,
-                'is_default' => $address->is_default,
-            ])->values()->all(),
-            'orders' => $user->orders->map(fn ($order) => [
-                'order_number' => $order->order_number,
-                'status' => $order->status,
-                'total' => (float) $order->total,
-                'placed_at' => $order->placed_at?->toIso8601String(),
-            ])->values()->all(),
-            'notification_preferences' => $this->getNotificationPreferences($user),
-        ];
-    }
+   
 
     private function normalizeLanguage(?string $language): string
     {

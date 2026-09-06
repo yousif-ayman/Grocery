@@ -16,8 +16,8 @@ class FaqResource extends JsonResource
             'category' => $this->category,
             'order' => $this->order,
             'is_active' => $this->is_active,
-            'created_at' => $this->created_at->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updated_at->format('Y-m-d H:i:s'),
+            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
+            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
         ];
     }
 }
