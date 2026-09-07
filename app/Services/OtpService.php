@@ -73,43 +73,42 @@ class OtpService
      * Generate a random numeric OTP of configured length.
      */
     private function generateOtpCode(): string
-    {
-        $fixed = config('otp.fixed_code');
-        if (is_string($fixed) && $fixed !== '') {
-            return $fixed;
-        }
+{
+    $fixed = config('otp.fixed_code');
 
-        $length = max(4, min(8, (int) config('otp.length', 6)));
-
-        $code = '';
-        for ($i = 0; $i < $length; $i++) {
-            $code .= (string) random_int(0, 9);
-        }
-
-        return $code;
+    if (is_string($fixed) && $fixed !== '') {
+        return $fixed;
     }
+
+    $length = (int) config('otp.length', 4);
+
+    $code = '';
+
+    for ($i = 0; $i < $length; $i++) {
+        $code .= random_int(0, 9);
+    }
+
+    return $code;
+}
 
     /**
      * Normalize identifier so email/OTP lookups match across requests.
      */
-    private function normalizeIdentifier(string $identifier): string
-    {
-        $identifier = trim($identifier);
+   private function normalizeIdentifier(string $identifier): string
+{
+    $identifier = trim($identifier);
 
-        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-            return strtolower($identifier);
-        }
-
-        return preg_replace('/\s+/', '', $identifier);
+    if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+        return strtolower($identifier);
     }
 
-    /**
-     * Normalize OTP from JSON/form (digits only; strips spaces and separators).
-     */
-    private function normalizeOtpInput(string|int $otpCode): string
-    {
-        return preg_replace('/\D/', '', (string) $otpCode);
-    }
+    return preg_replace('/\s+/', '', $identifier);
+}
+
+private function normalizeOtpInput(string|int $otpCode): string
+{
+    return preg_replace('/\D/', '', (string) $otpCode);
+}
 
     /**
      * Clean up expired OTPs
