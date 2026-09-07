@@ -4,24 +4,27 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChatbotMessage;
-use App\Services\ChatbotService;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use App\Actions\Chatbot\GetChatHistoryAction;
+use App\Http\Resources\V1\ChatbotMessageResource;
+use App\Actions\Chatbot\GetChatSuggestionsAction;
+use App\Actions\Chatbot\SendChatMessageAction;
 use Throwable;
-
 class ChatbotController extends Controller
 {
-    public function __construct(private readonly ChatbotService $chatbotService) {}
-
     /**
      * Send a message to the AI assistant.
      *
      * Supports an optional `session_id` (UUID) to maintain conversation history across requests.
      */
-    public function chat(Request $request): JsonResponse
-    {
+    public function chat(
+    Request $request,
+    SendChatMessageAction $action
+): JsonResponse {
         try {
             foreach (['question', 'message'] as $key) {
                 if ($request->hasFile($key)) {
@@ -70,12 +73,12 @@ class ChatbotController extends Controller
 
             $conversationId = $validated['conversation_id'] ?? $validated['session_id'] ?? null;
 
-            $result = $this->chatbotService->chat(
-                user: $user,
-                question: $question,
-                conversationId: $conversationId,
-                locale: $validated['locale'] ?? null,
-            );
+         $result = $action->execute(
+    user: $user,
+    question: $question,
+    conversationId: $conversationId,
+    locale: $validated['locale'] ?? null,
+);
 
             if (isset($validated['rating'])) {
                 ChatbotMessage::where('id', $result['id'])->update(['rating' => $validated['rating']]);
@@ -118,78 +121,69 @@ class ChatbotController extends Controller
     /**
      * Get current user's chatbot conversation history (paginated).
      */
-    public function history(Request $request): JsonResponse
-    {
-        try {
-            $perPage = min(max((int) $request->input('per_page', 15), 1), 50);
-            $messages = $request->user()
-                ->chatbotMessages()
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
+   public function history(
+    Request $request,
+    GetChatHistoryAction $action
+): JsonResponse {
+    try {
+        $perPage = (int) $request->input('per_page', 15);
 
-            $items = $messages->getCollection()->map(fn (ChatbotMessage $m) => [
-                'id' => $m->id,
-                'session_id' => $m->session_id,
-                'question' => $m->question,
-                'answer' => $m->answer,
-                'rating' => $m->rating,
-                'created_at' => $m->created_at,
-            ]);
+        $messages = $action->execute(
+            $request->user(),
+            $perPage
+        );
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Chat history retrieved successfully',
-                'data' => [
-                    'items' => $items,
-                    'pagination' => [
-                        'current_page' => $messages->currentPage(),
-                        'last_page' => $messages->lastPage(),
-                        'per_page' => $messages->perPage(),
-                        'total' => $messages->total(),
-                        'from' => $messages->firstItem(),
-                        'to' => $messages->lastItem(),
-                    ],
+ $items = ChatbotMessageResource::collection(
+    collect($messages->items())
+);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Chat history retrieved successfully',
+            'data' => [
+                'items' => $items,
+                'pagination' => [
+                    'current_page' => $messages->currentPage(),
+                    'last_page' => $messages->lastPage(),
+                    'per_page' => $messages->perPage(),
+                    'total' => $messages->total(),
+                    'from' => $messages->firstItem(),
+                    'to' => $messages->lastItem(),
                 ],
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Chatbot history error', ['message' => $e->getMessage()]);
+            ],
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Chatbot history error', [
+            'message' => $e->getMessage(),
+        ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to retrieve chat history',
-                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error',
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to retrieve chat history',
+            'error' => config('app.debug')
+                ? $e->getMessage()
+                : 'Internal server error',
+        ], 500);
     }
+}
 
     /**
      * Get suggested quick-reply questions (localised).
      */
-    public function suggestions(Request $request): JsonResponse
-    {
-        $locale = $request->input('locale', 'en');
-        $isAr = $locale === 'ar';
+   public function suggestions(
+    Request $request,
+    GetChatSuggestionsAction $action
+): JsonResponse {
+    $locale = $request->input('locale', 'en');
 
-        $suggestions = $isAr
-            ? [
-                ['id' => 'faq',      'label' => 'أسئلة شائعة',        'question' => 'ما هي الأسئلة الشائعة؟'],
-                ['id' => 'orders',   'label' => 'تتبع الطلب',          'question' => 'كيف أتتبع طلبي؟'],
-                ['id' => 'payment',  'label' => 'طرق الدفع',           'question' => 'ما طرق الدفع المتاحة؟'],
-                ['id' => 'products', 'label' => 'المنتجات والمفضلة',   'question' => 'ما المنتجات المتاحة والعروض؟'],
-                ['id' => 'offers',   'label' => 'كوبونات وعروض',       'question' => 'ما العروض وكوبونات الخصم الحالية؟'],
-            ]
-            : [
-                ['id' => 'faq',      'label' => 'FAQs',              'question' => 'What are the frequently asked questions?'],
-                ['id' => 'orders',   'label' => 'Track order',        'question' => 'How do I track my order?'],
-                ['id' => 'payment',  'label' => 'Payment methods',    'question' => 'What payment methods do you accept?'],
-                ['id' => 'products', 'label' => 'Products & offers',  'question' => 'What products and offers do you have?'],
-                ['id' => 'offers',   'label' => 'Coupons & offers',   'question' => 'What promo codes or offers are available?'],
-            ];
+    $suggestions = $action->execute($locale);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Suggestions retrieved successfully',
-            'data' => ['suggestions' => $suggestions],
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'message' => 'Suggestions retrieved successfully',
+        'data' => [
+            'suggestions' => $suggestions,
+        ],
+    ]);
+}
 }

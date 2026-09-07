@@ -85,4 +85,8 @@ public function getOrCreateCart(): Cart
         'user_id' => $this->id,
     ]);
 }
+public function chatbotMessages(): HasMany
+{
+    return $this->hasMany(ChatbotMessage::class);
+}
 }
